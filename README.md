@@ -17,7 +17,7 @@ For Ganglion cells:
 
 * BadenEtAl\_RGCs\_2016\_v1.mat
 
-This repository is set up in a manner where every function the user interacts with is contained in the `main.py` file, the resulting trained models are stored in the `models` folder.
+This repository is set up in a manner where every function the user interacts with is contained in the `neurocodes.py` file, the resulting trained models are stored in the `models` folder.
 
 # Data Structure
 
