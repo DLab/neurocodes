@@ -58,7 +58,7 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL, DEVICE,
             train_loss /= len(TRAINLOADER)
             trainLoss.append(train_loss)
             if VERBOSE and epoch%(int(EPOCHS*0.1)) == 0:
-                click.echo(f"Train Loss: {train_loss}\n")
+                click.echo(f"\nTrain Loss: {train_loss}\n")
                 
         test_loss = 0
         click.echo(f"\n## Test phase ##\n")
@@ -76,7 +76,7 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL, DEVICE,
             testLoss.append(test_loss)
 
             if VERBOSE and epoch%(int(EPOCHS*0.1)) == 0:
-                click.echo(f"Test Loss: {test_loss}\n\n")        
+                click.echo(f"\nTest Loss: {test_loss}\n\n")        
 
             if (test_loss < best_test_loss) or (epoch == 0):
                 best_test_loss = test_loss
@@ -86,6 +86,8 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL, DEVICE,
                     click.echo(f"\n\n### MODEL SAVED ON EPOCH {epoch+1} ###\n\n")
     
     model = bestmodel
+    
+    click.echo(f"\n\n### TRAINING FINISHED FOR ALL EPOCHS ###\n\n")
 
     return model, trainLoss, testLoss
 
