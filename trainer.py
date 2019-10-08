@@ -6,7 +6,7 @@ from torch.utils.data import DataLoader
 
 import click
 
-def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL,
+def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL, DEVICE,
               EPOCHS=100,
               CRITERION=(nn.MSELoss, {}),
               OPTIM=(optim.Adam, {'lr':0.0002, 'betas':(0.5, 0.999)}),
@@ -23,6 +23,7 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL,
     
     # Train the network
     # Initialize the network
+    device = DEVICE
     model = PYTMODEL[0](**PYTMODEL[1]).to(device)
     bestmodel = PYTMODEL[0](**PYTMODEL[1]).to(device)
     
@@ -40,8 +41,8 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL,
             click.echo(f"\n\n###################\nEpoch {epoch+1} out of {EPOCHS}\n###################\n\n")
             
         train_loss = 0
-        click.echo(f"\nTraining phase:\n")
-        with click.progressbar(TRAINLOADER, label="Training", show_percentage=True) as bar:
+        click.echo(f"\n## Training phase ##\n")
+        with click.progressbar(TRAINLOADER, label="Training", show_percent=True) as bar:
             for idx, (inp, target) in enumerate(bar):
 
                 inp = inp.to(device)
@@ -56,12 +57,12 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL,
                 train_loss += loss.item()
             train_loss /= len(TRAINLOADER)
             trainLoss.append(train_loss)
-            if VERBOSE and idx%(int(EPOCHS*0.1)) == 0:
+            if VERBOSE and epoch%(int(EPOCHS*0.1)) == 0:
                 click.echo(f"Train Loss: {train_loss}\n")
                 
         test_loss = 0
-        click.echo(f"\nTest phase:\n")
-        with click.progressbar(TESTLOADER, label="Testing", show_percentage=True) as bar:
+        click.echo(f"\n## Test phase ##\n")
+        with click.progressbar(TESTLOADER, label="Testing", show_percent=True) as bar:
             for idx, (inp, target) in enumerate(bar):
 
                 inp = inp.to(device)
@@ -74,7 +75,7 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL,
             test_loss /= len(TESTLOADER)
             testLoss.append(test_loss)
 
-            if VERBOSE and idx%(int(EPOCHS*0.1)) == 0:
+            if VERBOSE and epoch%(int(EPOCHS*0.1)) == 0:
                 click.echo(f"Test Loss: {test_loss}\n\n")        
 
             if (test_loss < best_test_loss) or (epoch == 0):
@@ -82,7 +83,7 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL,
                 copymodel(model, bestmodel)
                 best_epochs.append(epoch)
                 if VERBOSE:
-                    click.echo(f"\n\n### MODEL SAVED ON EPOCH {epoch+1}###\n\n")
+                    click.echo(f"\n\n### MODEL SAVED ON EPOCH {epoch+1} ###\n\n")
     
     model = bestmodel
 
@@ -139,8 +140,8 @@ def train(dataset, pytmodel,
     trainLoader = DataLoader(trainDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)
     testLoader = DataLoader(testDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)    
     
-    model, trainLoss, testLoss = trainloop(trainLoader, testLoader, pytmodel, 
-                                           EPOCHS, BATCHSIZE, CUDA, CRITERION, OPTIM, VERBOSE)
+    model, trainLoss, testLoss = trainloop(trainLoader, testLoader, pytmodel, device,
+                                           EPOCHS, CRITERION, OPTIM, VERBOSE)
 
     return model, trainLoss, testLoss, testDataset
 
@@ -195,8 +196,8 @@ def customtrain(trainDataset, testDataset, pytmodel,
     trainLoader = DataLoader(trainDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)
     testLoader = DataLoader(testDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)    
     
-    model, trainLoss, testLoss = trainloop(trainLoader, testLoader, pytmodel, 
-                                           EPOCHS, BATCHSIZE, CUDA, CRITERION, OPTIM, VERBOSE)
+    model, trainLoss, testLoss = trainloop(trainLoader, testLoader, pytmodel, device,
+                                           EPOCHS, CRITERION, OPTIM, VERBOSE)
 
     return model, trainLoss, testLoss
 
