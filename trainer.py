@@ -4,6 +4,91 @@ import torch.optim as optim
 
 from torch.utils.data import DataLoader
 
+import click
+
+def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL,
+              EPOCHS=100,
+              CRITERION=(nn.MSELoss, {}),
+              OPTIM=(optim.Adam, {'lr':0.0002, 'betas':(0.5, 0.999)}),
+              VERBOSE=True):
+    
+    # Copy parameters from one model to another    
+    def copymodel(modelFrom, modelTo):
+        params1 = modelFrom.named_parameters() 
+        params2 = modelTo.named_parameters() 
+        dict_params2 = dict(params2) 
+        for name1, param1 in params1: 
+            if name1 in dict_params2: 
+                dict_params2[name1].data.copy_(param1.data)
+    
+    # Train the network
+    # Initialize the network
+    model = PYTMODEL[0](**PYTMODEL[1]).to(device)
+    bestmodel = PYTMODEL[0](**PYTMODEL[1]).to(device)
+    
+    best_test_loss = 0
+    best_epochs = []
+    
+    trainLoss = []
+    testLoss = []
+    # Define the training loss function and the optimizers
+    criterion = CRITERION[0](**CRITERION[1]).to(device)
+    optimizer = OPTIM[0](model.parameters(), **OPTIM[1])
+    
+    for epoch in range(EPOCHS):
+        if VERBOSE:
+            click.echo(f"\n\n###################\nEpoch {epoch+1} out of {EPOCHS}\n###################\n\n")
+            
+        train_loss = 0
+        click.echo(f"\nTraining phase:\n")
+        with click.progressbar(TRAINLOADER, label="Training", show_percentage=True) as bar:
+            for idx, (inp, target) in enumerate(bar):
+
+                inp = inp.to(device)
+                target = target.to(device)
+
+                model.train()
+                optimizer.zero_grad()
+                out = model(inp).to(device)
+                loss = criterion(out, target)
+                loss.backward()
+                optimizer.step()
+                train_loss += loss.item()
+            train_loss /= len(TRAINLOADER)
+            trainLoss.append(train_loss)
+            if VERBOSE and idx%(int(EPOCHS*0.1)) == 0:
+                click.echo(f"Train Loss: {train_loss}\n")
+                
+        test_loss = 0
+        click.echo(f"\nTest phase:\n")
+        with click.progressbar(TESTLOADER, label="Testing", show_percentage=True) as bar:
+            for idx, (inp, target) in enumerate(bar):
+
+                inp = inp.to(device)
+                target = target.to(device)
+
+                model.eval()
+                out = model(inp).to(device)
+                loss = criterion(out, target)
+                test_loss += loss.item()
+            test_loss /= len(TESTLOADER)
+            testLoss.append(test_loss)
+
+            if VERBOSE and idx%(int(EPOCHS*0.1)) == 0:
+                click.echo(f"Test Loss: {test_loss}\n\n")        
+
+            if (test_loss < best_test_loss) or (epoch == 0):
+                best_test_loss = test_loss
+                copymodel(model, bestmodel)
+                best_epochs.append(epoch)
+                if VERBOSE:
+                    click.echo(f"\n\n### MODEL SAVED ON EPOCH {epoch+1}###\n\n")
+    
+    model = bestmodel
+
+    return model, trainLoss, testLoss
+
+
 def train(dataset, pytmodel,
           TRAINSIZE=0.8,
           EPOCHS=100, BATCHSIZE=8, CUDA=True,
@@ -41,15 +126,6 @@ def train(dataset, pytmodel,
              testDataset <pytorch dataset : The dataset that was used to validate on.
     """
     
-    # Copy parameters from one model to another
-    def copymodel(modelFrom, modelTo):
-        params1 = modelFrom.named_parameters() 
-        params2 = modelTo.named_parameters() 
-        dict_params2 = dict(params2) 
-        for name1, param1 in params1: 
-            if name1 in dict_params2: 
-                dict_params2[name1].data.copy_(param1.data)
-    
     USECUDA = torch.cuda.is_available() and CUDA
     device_name = "cuda:0" if USECUDA else "cpu"
     device = torch.device(device_name)
@@ -63,65 +139,8 @@ def train(dataset, pytmodel,
     trainLoader = DataLoader(trainDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)
     testLoader = DataLoader(testDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)    
     
-    # Train the network
-    # Initialize the network
-    model = pytmodel[0](**pytmodel[1]).to(device)
-    bestmodel = pytmodel[0](**pytmodel[1]).to(device)
-    
-    best_test_loss = 0
-    best_epochs = []
-    
-    trainLoss = []
-    testLoss = []
-    # Define the training loss function and the optimizers
-    criterion = CRITERION[0](**CRITERION[1]).to(device)
-    optimizer = OPTIM[0](model.parameters(), **OPTIM[1])
-    
-    for epoch in range(EPOCHS):
-        if VERBOSE:
-            print("\n\n###################\nEpoch {} out of {}\n###################\n\n".format(epoch + 1, EPOCHS))
-        train_loss = 0
-        for idx, (inp, target) in enumerate(trainLoader):
-            
-            inp = inp.to(device)
-            target = target.to(device)
-            
-            model.train()
-            optimizer.zero_grad()
-            out = model(inp).to(device)
-            loss = criterion(out, target)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-        train_loss /= len(trainLoader)
-        trainLoss.append(train_loss)
-        if VERBOSE:
-            print("Train Loss: {}\n".format(train_loss))
-
-        test_loss = 0
-        for idx, (inp, target) in enumerate(testLoader):
-            
-            inp = inp.to(device)
-            target = target.to(device)
-            
-            model.eval()
-            out = model(inp).to(device)
-            loss = criterion(out, target)
-            test_loss += loss.item()
-        test_loss /= len(testLoader)
-        testLoss.append(test_loss)
-
-        if VERBOSE:
-            print("Test Loss: {}\n\n".format(test_loss))        
-        
-        if (test_loss < best_test_loss) or (epoch == 0):
-            best_test_loss = test_loss
-            copymodel(model, bestmodel)
-            best_epochs.append(epoch)
-            if VERBOSE:
-                print("\n\n### MODEL SAVED ###\n\n")
-    
-    model = bestmodel
+    model, trainLoss, testLoss = trainloop(trainLoader, testLoader, pytmodel, 
+                                           EPOCHS, BATCHSIZE, CUDA, CRITERION, OPTIM, VERBOSE)
 
     return model, trainLoss, testLoss, testDataset
 
@@ -157,7 +176,6 @@ def customtrain(trainDataset, testDataset, pytmodel,
              model <pytorch model>        : The best model that had the best validation score among all the epochs.
              trainLoss      <list>        : The train losses for every epoch.
              testLoss       <list>        : The validation loss for every epoch.
-             testDataset <pytorch dataset : The dataset that was used to validate on.
     """
     
     # Copy parameters from one model to another
@@ -177,67 +195,10 @@ def customtrain(trainDataset, testDataset, pytmodel,
     trainLoader = DataLoader(trainDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)
     testLoader = DataLoader(testDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)    
     
-    # Train the network
-    # Initialize the network
-    model = pytmodel[0](**pytmodel[1]).to(device)
-    bestmodel = pytmodel[0](**pytmodel[1]).to(device)
-    
-    best_test_loss = 0
-    best_epochs = []
-    
-    trainLoss = []
-    testLoss = []
-    # Define the training loss function and the optimizers
-    criterion = CRITERION[0](**CRITERION[1]).to(device)
-    optimizer = OPTIM[0](model.parameters(), **OPTIM[1])
-    
-    for epoch in range(EPOCHS):
-        if VERBOSE:
-            print("\n\n###################\nEpoch {} out of {}\n###################\n\n".format(epoch + 1, EPOCHS))
-        train_loss = 0
-        for idx, (inp, target) in enumerate(trainLoader):
-            
-            inp = inp.to(device)
-            target = target.to(device)
-            
-            model.train()
-            optimizer.zero_grad()
-            out = model(inp).to(device)
-            loss = criterion(out, target)
-            loss.backward()
-            optimizer.step()
-            train_loss += loss.item()
-        train_loss /= len(trainLoader)
-        trainLoss.append(train_loss)
-        if VERBOSE:
-            print("Train Loss: {}\n".format(train_loss))
+    model, trainLoss, testLoss = trainloop(trainLoader, testLoader, pytmodel, 
+                                           EPOCHS, BATCHSIZE, CUDA, CRITERION, OPTIM, VERBOSE)
 
-        test_loss = 0
-        for idx, (inp, target) in enumerate(testLoader):
-            
-            inp = inp.to(device)
-            target = target.to(device)
-            
-            model.eval()
-            out = model(inp).to(device)
-            loss = criterion(out, target)
-            test_loss += loss.item()
-        test_loss /= len(testLoader)
-        testLoss.append(test_loss)
-
-        if VERBOSE:
-            print("Test Loss: {}\n\n".format(test_loss))        
-        
-        if (test_loss < best_test_loss) or (epoch == 0):
-            best_test_loss = test_loss
-            copymodel(model, bestmodel)
-            best_epochs.append(epoch)
-            if VERBOSE:
-                print("\n\n### MODEL SAVED ###\n\n")
-    
-    model = bestmodel
-
-    return model, trainLoss, testLoss, testDataset
+    return model, trainLoss, testLoss
 
 
 
