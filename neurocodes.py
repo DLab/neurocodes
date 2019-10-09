@@ -11,6 +11,7 @@ import torch.nn as nn
 import torch.optim as optim
 
 import click
+import pickle
 from os import path
 
 
@@ -43,7 +44,13 @@ from os import path
              help='Whether to use the full white noise stimulus to train.')
 @click.option('--centered/--no-centered', default=False, show_default=True,
              help='Whether to center the whitenoise stimulus or not.')
-def cli(directory, epochs, cuda, verbose, lr, cell, qi, cell_type, stimulus, train_size, batch_size, white_full, centered):
+@click.option('--save-model/--no-save-model', default=True, show_default=True,
+             help='Save the resulting model.')
+@click.option('--save-loss/--no-save-loss', default=True, show_default=True,
+             help='Save the loss.')
+def cli(directory, epochs, cuda, verbose, lr, cell, qi, 
+        cell_type, stimulus, train_size, batch_size, 
+        white_full, centered, save_model, save_loss):
     """
     Trains a neural network with data located in DIRECTORY
     """
@@ -103,12 +110,27 @@ def cli(directory, epochs, cuda, verbose, lr, cell, qi, cell_type, stimulus, tra
         "OPTIM"     : (optim.Adam, {'lr':lr, 'betas':(0.5, 0.999)}),
         "VERBOSE"   : verbose,
                 }
+    
+    pytmodel = (torchmodels.Bati, {"lw":cutStimulus.shape[-2], "lh":cutStimulus.shape[-1]})
 
     model, trloss, tsloss = trainer.customtrain(trainDataset, testDataset, 
-                                       (torchmodels.Bati, {"lw":cutStimulus.shape[-2], "lh":cutStimulus.shape[-1]}), **TRAINDICT)
+                                       pytmodel, **TRAINDICT)
     
-    return model, trloss, tsloss, testDataset
-
+    if save_model:
+        name = f"model_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+        
+        torchutils.savemodel(model, name)
+    
+    if save_loss:
+        nametr = f"trloss_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+        
+        namets = f"tsloss_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+        
+        with open(nametr + '.pkl', 'wb') as handle:
+            pickle.dump(trloss, handle, protocol=pickle.HIGHEST_PROTOCOL)
+           
+        with open(namets + '.pkl', 'wb') as handle:
+            pickle.dump(tsloss, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 if __name__ == "__main__":
-    model, trloss, tsloss, testdataset = cli()
+    cli()
