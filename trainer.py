@@ -24,8 +24,10 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL, DEVICE,
     # Train the network
     # Initialize the network
     device = DEVICE
-    model = PYTMODEL[0](**PYTMODEL[1]).to(device)
-    bestmodel = PYTMODEL[0](**PYTMODEL[1]).to(device)
+    model = PYTMODEL[0](**PYTMODEL[1])
+    model = model.to(device)
+    bestmodel = PYTMODEL[0](**PYTMODEL[1])
+    bestmodel = bestmodel.to(device)
     
     best_test_loss = 0
     best_epochs = []
