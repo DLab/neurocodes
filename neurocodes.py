@@ -7,6 +7,7 @@ import torchutils
 import trainer
 import datahandler
 
+import torch
 import torch.nn as nn
 import torch.optim as optim
 
@@ -111,7 +112,9 @@ def cli(directory, epochs, cuda, verbose, lr, cell, qi,
         "VERBOSE"   : verbose,
                 }
     
-    pytmodel = (torchmodels.Bati, {"lw":cutStimulus.shape[-2], "lh":cutStimulus.shape[-1]})
+    device = torch.device("cuda:0") if cuda else torch.device("cpu")
+    
+    pytmodel = (torchmodels.Bati, {"lw":cutStimulus.shape[-2], "lh":cutStimulus.shape[-1], "device":device},)
 
     model, trloss, tsloss = trainer.customtrain(trainDataset, testDataset, 
                                        pytmodel, **TRAINDICT)

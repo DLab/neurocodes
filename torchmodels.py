@@ -110,7 +110,7 @@ class Bati(nn.Module):
         h_1, c_1, h_2, c_2 = self.init_weights(batch_size)
         output = torch.empty(torch.Size([stimulus.shape[0], stimulus.shape[1]]))
         for i in range(stimulus.shape[1]):
-            unravel = stimulus[:, i, :, :].reshape(batch_size, -1).to(self.device)
+            unravel = stimulus[:, i, :, :].reshape(batch_size, -1)
             out_l = F.relu(self.linear_layer(unravel))
             h_1, c_1 = self.first_lstm(out_l, (h_1, c_1))
             h_2, c_2 = self.second_lstm(h_1, (h_2, c_2))
