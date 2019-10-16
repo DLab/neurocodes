@@ -49,59 +49,67 @@ from os import path
              help='Save the resulting model.')
 @click.option('--save-loss/--no-save-loss', default=True, show_default=True,
              help='Save the loss.')
+@click.option('--validation/--no-validation', default=True, show_default=True,
+             help='Validate the model.')
 def cli(directory, epochs, cuda, verbose, lr, cell, qi, 
         cell_type, stimulus, train_size, batch_size, 
-        white_full, centered, save_model, save_loss):
+        white_full, centered, validation, save_model, save_loss):
     """
     Trains a neural network with data located in DIRECTORY
     """
     DIRECTORY = path.abspath(directory)
     cellData = retinaldata.Data(DIRECTORY + '/', cell=cell)
-    
-    if stimulus == 'chirp':
-        raise NotImplementedError(f'{stimulus} not yet implemented')
+
     if cell == "bipolar" and cell_type not in range(1, 15):
         raise NameError(f'Cell {cell} does not have type {cell_type} (Choose 1..14)')
     if cell == "ganglionar" and cell_type not in range(1, 40):
         raise NameError(f'Cell {cell} does not have type {cell_type} (Choose 1..39)')
     
     CELLTYPE = cell_type
-    
-    if not centered:
-        whiteStimulus = cellData.stimulus(stimulus, cell_type=CELLTYPE)
-        whiteResponse = cellData.response(stimulus, cell_type=CELLTYPE)
-        
-    else:
-        _, loc = cellData.rf(centered=True)
-        whiteStimulus = cellData.stimulus(stimulus, cell_type=CELLTYPE, centered=True, loc=loc)
-        whiteResponse = cellData.response(stimulus, cell_type=CELLTYPE)
-
-    if not white_full:
-        cutStimulus   = whiteStimulus[5000:12000] if not centered else whiteStimulus[:, 5000:12000]
-        cutResponse   = whiteResponse[:, 5000:12000]
-
-    else:
-        cutStimulus = whiteStimulus[1000:16000] if not centered else whiteStimulus[:, 1000:16000]
-        cutResponse = whiteResponse[:, 1000:16000]
-            
-    TRAINSIZE     = int(cutStimulus.shape[0]*train_size)
-
-    trainStimulus = cutStimulus[:TRAINSIZE] if not centered else cutStimulus[:, :TRAINSIZE]
-    validStimulus = cutStimulus[TRAINSIZE:] if not centered else cutStimulus[:, TRAINSIZE:] 
-
-    trainResponse = cutResponse[:, :TRAINSIZE]
-    validResponse = cutResponse[:, TRAINSIZE:]
-
+    VALIDATION = validation
     toTensor      = datahandler.ToTensor()
     
-    if not centered:
-        trainDataset = datahandler.WhiteNoiseDataset(trainStimulus, trainResponse, transform=toTensor)
-        testDataset  = datahandler.WhiteNoiseDataset(validStimulus, validResponse, transform=toTensor)
-        
-    else:
-        trainDataset = datahandler.WhiteNoiseDatasetCentered(trainStimulus, trainResponse, transform=toTensor)
-        testDataset  = datahandler.WhiteNoiseDatasetCentered(validStimulus, validResponse, transform=toTensor)
+    if stimulus == 'whitenoise':
 
+        if not centered:
+            whiteStimulus = cellData.stimulus(stimulus, cell_type=CELLTYPE)
+            whiteResponse = cellData.response(stimulus, cell_type=CELLTYPE)
+
+        else:
+            _, loc = cellData.rf(centered=True)
+            whiteStimulus = cellData.stimulus(stimulus, cell_type=CELLTYPE, centered=True, loc=loc)
+            whiteResponse = cellData.response(stimulus, cell_type=CELLTYPE)
+
+        if not white_full:
+            cutStimulus   = whiteStimulus[5000:12000] if not centered else whiteStimulus[:, 5000:12000]
+            cutResponse   = whiteResponse[:, 5000:12000]
+
+        else:
+            cutStimulus = whiteStimulus[1000:16000] if not centered else whiteStimulus[:, 1000:16000]
+            cutResponse = whiteResponse[:, 1000:16000]
+
+        TRAINSIZE     = int(cutStimulus.shape[0]*train_size)
+
+        trainStimulus = cutStimulus[:TRAINSIZE] if not centered else cutStimulus[:, :TRAINSIZE]
+        validStimulus = cutStimulus[TRAINSIZE:] if not centered else cutStimulus[:, TRAINSIZE:] 
+
+        trainResponse = cutResponse[:, :TRAINSIZE]
+        validResponse = cutResponse[:, TRAINSIZE:]
+
+        if not centered:
+            trainDataset = datahandler.WhiteNoiseDataset(trainStimulus, trainResponse, transform=toTensor)
+            testDataset  = datahandler.WhiteNoiseDataset(validStimulus, validResponse, transform=toTensor)
+
+        else:
+            trainDataset = datahandler.WhiteNoiseDatasetCentered(trainStimulus, trainResponse, transform=toTensor)
+            testDataset  = datahandler.WhiteNoiseDatasetCentered(validStimulus, validResponse, transform=toTensor)
+
+    else:
+        
+        chirpStimulus = cellData.stimulus("chirp")
+        chirpResponse = cellData.response("chirp", cell_type=CELLTYPE)
+
+        trainDataset = datahandler.TemporalDataset(chirpStimulus, chirpResponse, transform=toTensor)
         
     TRAINDICT = {
         "EPOCHS"    : epochs,
@@ -114,26 +122,39 @@ def cli(directory, epochs, cuda, verbose, lr, cell, qi,
     
     device = torch.device("cuda:0") if cuda else torch.device("cpu")
     
-    pytmodel = (torchmodels.Bati, {"lw":cutStimulus.shape[-2], "lh":cutStimulus.shape[-1], "device":device},)
+    if stimulus == 'whitenoise':
+        pytmodel = (torchmodels.Bati, {"lw":cutStimulus.shape[-2], "lh":cutStimulus.shape[-1], "device":device},)
 
-    model, trloss, tsloss = trainer.customtrain(trainDataset, testDataset, 
-                                       pytmodel, **TRAINDICT)
+        model, trloss, tsloss = trainer.customtrain(trainDataset, testDataset, 
+                                           pytmodel, **TRAINDICT)
+        
+        model_name = f"model_{stimulus}_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+        
+        tr_name = f"trloss_{stimulus}_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+        
+        ts_name = f"tsloss_{stimulus}_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+
+    else:
+        VALIDATION = False
+        pytmodel = (torchmodels.Lstmcell, {})
+        model, trloss = trainer.temporaltrain(trainDataset, pytmodel, **TRAINDICT)
+        
+        model_name = f"model_{stimulus}_{pytmodel[0].__name__}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+        
+        tr_name = f"trloss_{stimulus}_{pytmodel[0].__name__}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
     
     if save_model:
-        name = f"model_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
-        
-        torchutils.savemodel(model, name)
+        torchutils.savemodel(model, model_name)
     
     if save_loss:
-        nametr = f"trloss_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+        with open(tr_name + '.pkl', 'wb') as handle:
+            pickle.dump(trloss, handle, protocol=pickle.HIGHEST_PROTOCOL)        
         
-        namets = f"tsloss_{pytmodel[0].__name__}_{pytmodel[1]['lw']}x{pytmodel[1]['lh']}_{cell}_type_{cell_type}_epochs_{epochs}_lr_{lr}_batch_size_{batch_size}.pt"
+        if VALIDATION:
+            with open(ts_name + '.pkl', 'wb') as handle:
+                pickle.dump(tsloss, handle, protocol=pickle.HIGHEST_PROTOCOL)
         
-        with open(nametr + '.pkl', 'wb') as handle:
-            pickle.dump(trloss, handle, protocol=pickle.HIGHEST_PROTOCOL)
-           
-        with open(namets + '.pkl', 'wb') as handle:
-            pickle.dump(tsloss, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+           
 if __name__ == "__main__":
     cli()

@@ -58,6 +58,21 @@ class WhiteNoiseDatasetCentered(Dataset):
         
         return sample
 
+class TemporalDataset(WhiteNoiseDataset):
+    """
+    A dataset (iterable) for the Chirp type of data.
+    
+    init:
+        *args:
+            cellStimulus <numpy array> : White Noise Stimulus of shape (cells, frames, width, heigth)
+            cellResponse <numpy array> : White Noise Response of shape (number of cells, frames)
+        *kwargs:
+            transform          <class> : Transforms to be applied to the data
+                                         ( default: None )
+    """
+    def __init__(self, stimulus, response, transform=None):
+        super(TemporalDataset, self).__init__(stimulus, response, transform)
+        
 class ToTensor(object):
     """
     A transform class that takes numpy arrays and transforms them into torch tensors.

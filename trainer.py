@@ -7,6 +7,7 @@ from torch.utils.data import DataLoader
 import click
 
 def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL, DEVICE,
+              VALIDATION=True,
               EPOCHS=100,
               CRITERION=(nn.MSELoss, {}),
               OPTIM=(optim.Adam, {'lr':0.0002, 'betas':(0.5, 0.999)}),
@@ -29,7 +30,7 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL, DEVICE,
     bestmodel = PYTMODEL[0](**PYTMODEL[1])
     bestmodel = bestmodel.to(device)
     
-    best_test_loss = 0
+    best_loss = 0
     best_epochs = []
     
     trainLoss = []
@@ -66,39 +67,50 @@ def trainloop(TRAINLOADER, TESTLOADER, PYTMODEL, DEVICE,
             except:
                 click.echo(f"\nTrain Loss: {train_loss}")
                 
-        test_loss = 0
-        click.echo(f"\n## Test phase ##\n")
-        with click.progressbar(TESTLOADER, label="Testing", show_percent=True) as bar:
-            for idx, (inp, target) in enumerate(bar):
-
-                inp = inp.to(device)
-                target = target.to(device)
-
-                model.eval()
-                out = model(inp).to(device)
-                loss = criterion(out, target)
-                test_loss += loss.item()
-            test_loss /= len(TESTLOADER)
-            testLoss.append(test_loss)
-
-            try:
-                if VERBOSE and epoch%(int((EPOCHS)*0.1)) == 0:
-                    click.echo(f"\nTest Loss: {test_loss}\n")        
-            except:
-                click.echo(f"\nTest Loss: {test_loss}\n")
-                    
-            if (test_loss < best_test_loss) or (epoch == 0):
-                best_test_loss = test_loss
+            if not VALIDATION and ((train_loss < best_loss) or (epoch == 0)):
+                best_loss = train_loss
                 copymodel(model, bestmodel)
                 best_epochs.append(epoch)
                 if VERBOSE:
                     click.secho(f"### MODEL SAVED ON EPOCH {epoch+1} ###", fg='green')
+        
+        if VALIDATION:
+            test_loss = 0
+            click.echo(f"\n## Test phase ##\n")
+            with click.progressbar(TESTLOADER, label="Testing", show_percent=True) as bar:
+                for idx, (inp, target) in enumerate(bar):
+
+                    inp = inp.to(device)
+                    target = target.to(device)
+
+                    model.eval()
+                    out = model(inp).to(device)
+                    loss = criterion(out, target)
+                    test_loss += loss.item()
+                test_loss /= len(TESTLOADER)
+                testLoss.append(test_loss)
+
+                try:
+                    if VERBOSE and epoch%(int((EPOCHS)*0.1)) == 0:
+                        click.echo(f"\nTest Loss: {test_loss}\n")        
+                except:
+                    click.echo(f"\nTest Loss: {test_loss}\n")
+
+                if (test_loss < best_loss) or (epoch == 0):
+                    best_loss = test_loss
+                    copymodel(model, bestmodel)
+                    best_epochs.append(epoch)
+                    if VERBOSE:
+                        click.secho(f"### MODEL SAVED ON EPOCH {epoch+1} ###", fg='green')
     
     model = bestmodel
     
     click.echo(f"\n### TRAINING FINISHED FOR ALL EPOCHS ###\n")
 
-    return model, trainLoss, testLoss
+    if VALIDATION:
+        return model, trainLoss, testLoss
+    else:
+        return model, trainLoss
 
 
 def train(dataset, pytmodel,
@@ -152,7 +164,7 @@ def train(dataset, pytmodel,
     testLoader = DataLoader(testDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)    
     
     model, trainLoss, testLoss = trainloop(trainLoader, testLoader, pytmodel, device,
-                                           EPOCHS, CRITERION, OPTIM, VERBOSE)
+                                           EPOCHS=EPOCHS, CRITERION=CRITERION, OPTIM=OPTIM, VERBOSE=VERBOSE)
 
     return model, trainLoss, testLoss, testDataset
 
@@ -190,15 +202,6 @@ def customtrain(trainDataset, testDataset, pytmodel,
              testLoss       <list>        : The validation loss for every epoch.
     """
     
-    # Copy parameters from one model to another
-    def copymodel(modelFrom, modelTo):
-        params1 = modelFrom.named_parameters() 
-        params2 = modelTo.named_parameters() 
-        dict_params2 = dict(params2) 
-        for name1, param1 in params1: 
-            if name1 in dict_params2: 
-                dict_params2[name1].data.copy_(param1.data)
-    
     USECUDA = torch.cuda.is_available() and CUDA
     device_name = "cuda:0" if USECUDA else "cpu"
     device = torch.device(device_name)
@@ -208,13 +211,55 @@ def customtrain(trainDataset, testDataset, pytmodel,
     testLoader = DataLoader(testDataset, batch_size=BATCHSIZE, shuffle=True, drop_last=True)    
     
     model, trainLoss, testLoss = trainloop(trainLoader, testLoader, pytmodel, device,
-                                           EPOCHS, CRITERION, OPTIM, VERBOSE)
+                                           EPOCHS=EPOCHS, CRITERION=CRITERION, OPTIM=OPTIM, VERBOSE=VERBOSE)
 
     return model, trainLoss, testLoss
 
 
+def temporaltrain(TRAINDATASET, PYTMODEL,
+                 EPOCHS=100, BATCHSIZE=8, CUDA=True,
+                 CRITERION=(nn.MSELoss, {}),
+                 OPTIM=(optim.Adam, {'lr':0.02, 'betas':(0.5, 0.999)}),
+                 VERBOSE=True):
+    """
+    Trains a TEMPORAL MODEL for a dataset. No validation.
+        Inputs:
+            * args:
+                  TRAINDATASET <pytorch dataset> : Dataset to train on.
+                  PYTMODEL               <tuple> : Tuple with two parameters, the first is the model, the second is a
+                                                   dictionary containing the keyword arguments to initialize the model.
 
-items = [train, customtrain]
+            * kwargs:
+                  EPOCHS      <int> : How many epochs to train on.
+                                      ( default: 100 )
+                  BATCHSIZE:  <int> : Batch size to use in training.
+                                      ( default: 8 )
+                  CUDA       <bool> : Whether to use cuda or not.
+                                      ( default: True )
+                  CRITERION <tuple> : Tuple with two paremeters, the first is the criterion, the second is a dictionary
+                                      containing the keyword arguments to initialize the model.
+                                      ( default: (nn.MSELoss, {}) )
+                  OPTIM     <tuple> : Tuple with two paramenters, the first is the optimizer to use, the second is a
+                                      dictionary containing the keywords arguments to initialize the model.
+                                      ( default: (optim.Adam, {'lr':0.02, 'betas':(0.5, 0.999)}) )
+                  VERBOSE    <bool> : Whether to print how the training is going or not.
+                                      ( default: True )
+         Outputs:
+             model <pytorch model>        : The best model that had the best validation score among all the epochs.
+             trainLoss      <list>        : The train losses for every epoch.
+    """
+
+    USECUDA = torch.cuda.is_available() and CUDA
+    device_name = "cuda:0" if USECUDA else "cpu"
+    device = torch.device(device_name)
+    
+    # Make the iterators with Pytorch's dataloaders
+    trainLoader = DataLoader(TRAINDATASET, batch_size=BATCHSIZE, shuffle=True, drop_last=True)
+    
+    return trainloop(trainLoader, None, PYTMODEL, device,
+                    EPOCHS=EPOCHS, CRITERION=CRITERION, OPTIM=OPTIM, VERBOSE=VERBOSE, VALIDATION=False)
+    
+items = [train, customtrain, temporaltrain]
 
 def usage(verbose=True):
     for item in items:
