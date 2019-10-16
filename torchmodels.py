@@ -24,12 +24,14 @@ class Lstmcell(nn.Module):
                                                 - O is the output size.
     """
     
-    def __init__(self, device=torch.device("cuda:0"), hidden_size=51):
+    def __init__(self, device=torch.device("cuda:0"), hidden_size=51, input_size=1):
         super(Lstmcell, self).__init__()
         self.device = device
         self.hidden_size = hidden_size
-        self.lstm1 = nn.LSTMCell(1, self.hidden_size)
-        self.lstm2 = nn.LSTMCell(self.hidden_size, 1)
+        self.input_size = input_size
+        self.first_lstm = nn.LSTMCell(self.input_size, self.hidden_size)
+        self.second_lstm = nn.LSTMCell(self.hidden_size, 1)
+        self.adjust_layer = nn.Linear(1, 1)
 
     def init_weights(self, batchSize):
         h_lstm1 = torch.zeros(batchSize, self.hidden_size).to(self.device)
@@ -44,8 +46,10 @@ class Lstmcell(nn.Module):
         h_1, c_1, h_2, c_2 = self.init_weights(batchSize)
         output = torch.empty((batchSize, inputSize))
         for i in range(inputSize):
-            h_1, c_1 = self.lstm1(stimulus[:, i], (h_1, c_1))
-            h_2, c_2 = self.lstm2(h_1, (h_2, c_2))
+            h_1, c_1 = self.first_lstm(stimulus[:, i].reshape(batchSize, self.input_size), (h_1, c_1))
+            h_2, c_2 = self.second_lstm(h_1, (h_2, c_2))
+#             out = self.adjust_layer(h_2)
+#             output[:, i] = out.reshape([batchSize])
             output[:, i] = h_2.reshape([batchSize])
         return output
     
