@@ -48,8 +48,6 @@ class Lstmcell(nn.Module):
         for i in range(inputSize):
             h_1, c_1 = self.first_lstm(stimulus[:, i].reshape(batchSize, self.input_size), (h_1, c_1))
             h_2, c_2 = self.second_lstm(h_1, (h_2, c_2))
-#             out = self.adjust_layer(h_2)
-#             output[:, i] = out.reshape([batchSize])
             output[:, i] = h_2.reshape([batchSize])
         return output
     
