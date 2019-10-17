@@ -164,19 +164,16 @@ class WhiteNoise(DataType):
                 cells = self.tags[cell_type]
             
             data_to_center = np.array(self.stim)
-            centered_cells = np.zeros((*cells.shape, *data_to_center.shape))
+            #centered_cells = np.zeros((*cells.shape, *data_to_center.shape))
             centered_shape = np.zeros((*cells.shape, data_to_center.shape[0], 7, 7))
             
             cell_type = loc['cell_type']
 
             for cell in range(len(cells)):
-                for frame in range(data_to_center.shape[0]):
-                    to_center = data_to_center[frame]
-                    shifted_x = np.roll(to_center, loc[cell][0], axis=0)
-                    shifted_y = np.roll(shifted_x, loc[cell][1], axis=1)
-                    centered_cells[cell, frame, :, :] = shifted_y
-                    centered_shape[cell, frame, :, :] = centered_cells[cell, frame, 7:14,5:12]
-                stim = centered_shape
+                to_center = data_to_center
+                shifted = np.roll(to_center, (loc[cell][0],loc[cell][1]), axis=(1,2))
+                centered_shape[cell, :, :, :] = shifted[:,7:14,5:12]
+            stim = centered_shape
                         
         return stim
 
